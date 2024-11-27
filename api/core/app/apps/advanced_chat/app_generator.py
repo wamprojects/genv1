@@ -14,13 +14,27 @@ from constants import UUID_NIL
 from core.app.app_config.features.file_upload.manager import FileUploadConfigManager
 from core.app.apps.advanced_chat.app_config_manager import AdvancedChatAppConfigManager
 from core.app.apps.advanced_chat.app_runner import AdvancedChatAppRunner
-from core.app.apps.advanced_chat.generate_response_converter import AdvancedChatAppGenerateResponseConverter
-from core.app.apps.advanced_chat.generate_task_pipeline import AdvancedChatAppGenerateTaskPipeline
-from core.app.apps.base_app_queue_manager import AppQueueManager, GenerateTaskStoppedError, PublishFrom
+from core.app.apps.advanced_chat.generate_response_converter import (
+    AdvancedChatAppGenerateResponseConverter,
+)
+from core.app.apps.advanced_chat.generate_task_pipeline import (
+    AdvancedChatAppGenerateTaskPipeline,
+)
+from core.app.apps.base_app_queue_manager import (
+    AppQueueManager,
+    GenerateTaskStoppedError,
+    PublishFrom,
+)
 from core.app.apps.message_based_app_generator import MessageBasedAppGenerator
 from core.app.apps.message_based_app_queue_manager import MessageBasedAppQueueManager
-from core.app.entities.app_invoke_entities import AdvancedChatAppGenerateEntity, InvokeFrom
-from core.app.entities.task_entities import ChatbotAppBlockingResponse, ChatbotAppStreamResponse
+from core.app.entities.app_invoke_entities import (
+    AdvancedChatAppGenerateEntity,
+    InvokeFrom,
+)
+from core.app.entities.task_entities import (
+    ChatbotAppBlockingResponse,
+    ChatbotAppStreamResponse,
+)
 from core.model_runtime.errors.invoke import InvokeAuthorizationError, InvokeError
 from core.ops.ops_trace_manager import TraceQueueManager
 from extensions.ext_database import db
@@ -84,7 +98,9 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
         query = query.replace("\x00", "")
         inputs = args["inputs"]
 
-        extras = {"auto_generate_conversation_name": args.get("auto_generate_name", False)}
+        extras = {
+            "auto_generate_conversation_name": args.get("auto_generate_name", False)
+        }
 
         # get conversation
         conversation = None
@@ -96,7 +112,9 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
 
         # parse files
         files = args["files"] if args.get("files") else []
-        file_extra_config = FileUploadConfigManager.convert(workflow.features_dict, is_vision=False)
+        file_extra_config = FileUploadConfigManager.convert(
+            workflow.features_dict, is_vision=False
+        )
         if file_extra_config:
             file_objs = file_factory.build_from_mappings(
                 mappings=files,
@@ -107,11 +125,14 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
             file_objs = []
 
         # convert to app config
-        app_config = AdvancedChatAppConfigManager.get_app_config(app_model=app_model, workflow=workflow)
+        app_config = AdvancedChatAppConfigManager.get_app_config(
+            app_model=app_model, workflow=workflow
+        )
 
         # get tracing instance
         trace_manager = TraceQueueManager(
-            app_id=app_model.id, user_id=user.id if isinstance(user, Account) else user.session_id
+            app_id=app_model.id,
+            user_id=user.id if isinstance(user, Account) else user.session_id,
         )
 
         if invoke_from == InvokeFrom.DEBUGGER:
@@ -127,10 +148,16 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
             conversation_id=conversation.id if conversation else None,
             inputs=conversation.inputs
             if conversation
-            else self._prepare_user_inputs(user_inputs=inputs, variables=app_config.variables, tenant_id=app_model.id),
+            else self._prepare_user_inputs(
+                user_inputs=inputs,
+                variables=app_config.variables,
+                tenant_id=app_model.id,
+            ),
             query=query,
             files=file_objs,
-            parent_message_id=args.get("parent_message_id") if invoke_from != InvokeFrom.SERVICE_API else UUID_NIL,
+            parent_message_id=args.get("parent_message_id")
+            if invoke_from != InvokeFrom.SERVICE_API
+            else UUID_NIL,
             user_id=user.id,
             stream=stream,
             invoke_from=invoke_from,
@@ -150,7 +177,13 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
         )
 
     def single_iteration_generate(
-        self, app_model: App, workflow: Workflow, node_id: str, user: Account, args: dict, stream: bool = True
+        self,
+        app_model: App,
+        workflow: Workflow,
+        node_id: str,
+        user: Account,
+        args: dict,
+        stream: bool = True,
     ) -> dict[str, Any] | Generator[str, Any, None]:
         """
         Generate App response.
@@ -169,7 +202,9 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
             raise ValueError("inputs is required")
 
         # convert to app config
-        app_config = AdvancedChatAppConfigManager.get_app_config(app_model=app_model, workflow=workflow)
+        app_config = AdvancedChatAppConfigManager.get_app_config(
+            app_model=app_model, workflow=workflow
+        )
 
         # init application generate entity
         application_generate_entity = AdvancedChatAppGenerateEntity(
@@ -223,7 +258,9 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
             is_first_conversation = True
 
         # init generate records
-        (conversation, message) = self._init_generate_records(application_generate_entity, conversation)
+        (conversation, message) = self._init_generate_records(
+            application_generate_entity, conversation
+        )
 
         if is_first_conversation:
             # update conversation features
@@ -267,7 +304,9 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
             stream=stream,
         )
 
-        return AdvancedChatAppGenerateResponseConverter.convert(response=response, invoke_from=invoke_from)
+        return AdvancedChatAppGenerateResponseConverter.convert(
+            response=response, invoke_from=invoke_from
+        )
 
     def _generate_worker(
         self,
@@ -308,7 +347,8 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
                 pass
             except InvokeAuthorizationError:
                 queue_manager.publish_error(
-                    InvokeAuthorizationError("Incorrect API key provided"), PublishFrom.APPLICATION_MANAGER
+                    InvokeAuthorizationError("Incorrect API key provided"),
+                    PublishFrom.APPLICATION_MANAGER,
                 )
             except ValidationError as e:
                 logger.exception("Validation Error when generating")
@@ -333,7 +373,9 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
         message: Message,
         user: Union[Account, EndUser],
         stream: bool = False,
-    ) -> Union[ChatbotAppBlockingResponse, Generator[ChatbotAppStreamResponse, None, None]]:
+    ) -> Union[
+        ChatbotAppBlockingResponse, Generator[ChatbotAppStreamResponse, None, None]
+    ]:
         """
         Handle response.
         :param application_generate_entity: application generate entity
@@ -362,5 +404,7 @@ class AdvancedChatAppGenerator(MessageBasedAppGenerator):
             if e.args[0] == "I/O operation on closed file.":  # ignore this error
                 raise GenerateTaskStoppedError()
             else:
-                logger.exception(f"Failed to process generate task pipeline, conversation_id: {conversation.id}")
+                logger.exception(
+                    f"Failed to process generate task pipeline, conversation_id: {conversation.id}"
+                )
                 raise e

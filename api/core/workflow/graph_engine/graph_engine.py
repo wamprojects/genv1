@@ -38,7 +38,7 @@ from core.workflow.nodes import NodeType
 from core.workflow.nodes.answer.answer_stream_processor import AnswerStreamProcessor
 from core.workflow.nodes.base import BaseNode
 from core.workflow.nodes.end.end_stream_processor import EndStreamProcessor
-from core.workflow.nodes.enums import ErrorStrategy
+from core.workflow.nodes.enums import ErrorStrategy, FailBranchSourceHandle
 from core.workflow.nodes.event import RunCompletedEvent, RunRetrieverResourceEvent, RunStreamChunkEvent
 from core.workflow.nodes.node_mapping import node_type_classes_mapping
 from extensions.ext_database import db
@@ -66,7 +66,6 @@ class GraphEngineThreadPool(ThreadPoolExecutor):
         self.submit_count -= 1
 
     def check_is_full(self) -> None:
-        print(f"submit_count: {self.submit_count}, max_submit_count: {self.max_submit_count}")
         if self.submit_count > self.max_submit_count:
             raise ValueError(f"Max submit count {self.max_submit_count} of workflow thread pool reached.")
 
@@ -631,7 +630,7 @@ class GraphEngine:
 
                         elif run_result.status == WorkflowNodeExecutionStatus.SUCCEEDED:
                             if node_instance.should_continue_on_error:
-                                run_result.edge_source_handle = "false"
+                                run_result.edge_source_handle = FailBranchSourceHandle.SUCCESS
                             if run_result.metadata and run_result.metadata.get(NodeRunMetadataKey.TOTAL_TOKENS):
                                 # plus state total_tokens
                                 self.graph_runtime_state.total_tokens += int(
@@ -795,7 +794,7 @@ class GraphEngine:
                 outputs=node_instance.node_data.default_value,
             )
 
-        return NodeRunResult(**node_error_args, outputs=None, edge_source_handle="true")
+        return NodeRunResult(**node_error_args, outputs=None, edge_source_handle=FailBranchSourceHandle.FAILED)
 
 
 class GraphRunFailedError(Exception):

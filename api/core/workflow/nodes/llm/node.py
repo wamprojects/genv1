@@ -20,6 +20,7 @@ from core.model_runtime.entities import (
 from core.model_runtime.entities.llm_entities import LLMResult, LLMUsage
 from core.model_runtime.entities.message_entities import (
     AssistantPromptMessage,
+    PromptMessageContent,
     PromptMessageRole,
     SystemPromptMessage,
     UserPromptMessage,
@@ -38,6 +39,7 @@ from core.variables import (
     ObjectSegment,
     StringSegment,
 )
+from core.workflow.constants import SYSTEM_VARIABLE_NODE_ID
 from core.workflow.entities.node_entities import NodeRunMetadataKey, NodeRunResult
 from core.workflow.entities.variable_entities import VariableSelector
 from core.workflow.entities.variable_pool import VariablePool
@@ -73,6 +75,7 @@ from .exc import (
     ModelNotExistError,
     NoPromptFoundError,
     NotSupportedPromptTypeError,
+    TemplateTypeNotSupportError,
     VariableNotFoundError,
 )
 
@@ -132,11 +135,15 @@ class LLMNode(BaseNode[LLMNodeData]):
             # fetch memory
             memory = self._fetch_memory(node_data_memory=self.node_data.memory, model_instance=model_instance)
 
-            # fetch prompt messages
+            query = None
             if self.node_data.memory:
                 query = self.node_data.memory.query_prompt_template
-            else:
-                query = None
+                if not query and (
+                    query_variable := self.graph_runtime_state.variable_pool.get(
+                        (SYSTEM_VARIABLE_NODE_ID, SystemVariableKey.QUERY)
+                    )
+                ):
+                    query = query_variable.text
 
             prompt_messages, stop = self._fetch_prompt_messages(
                 user_query=query,
@@ -192,7 +199,6 @@ class LLMNode(BaseNode[LLMNodeData]):
             )
             return
         except Exception as e:
-            logger.exception(f"Node {self.node_id} failed to run")
             yield RunCompletedEvent(
                 run_result=NodeRunResult(
                     status=WorkflowNodeExecutionStatus.FAILED,
@@ -622,9 +628,7 @@ class LLMNode(BaseNode[LLMNodeData]):
                 prompt_content = prompt_messages[0].content.replace("#sys.query#", user_query)
                 prompt_messages[0].content = prompt_content
         else:
-            errmsg = f"Prompt type {type(prompt_template)} is not supported"
-            logger.warning(errmsg)
-            raise NotSupportedPromptTypeError(errmsg)
+            raise TemplateTypeNotSupportError(type_name=str(type(prompt_template)))
 
         if vision_enabled and user_files:
             file_prompts = []
@@ -825,14 +829,14 @@ class LLMNode(BaseNode[LLMNodeData]):
         }
 
 
-def _combine_text_message_with_role(*, text: str, role: PromptMessageRole):
+def _combine_message_content_with_role(*, contents: Sequence[PromptMessageContent], role: PromptMessageRole):
     match role:
         case PromptMessageRole.USER:
-            return UserPromptMessage(content=[TextPromptMessageContent(data=text)])
+            return UserPromptMessage(content=contents)
         case PromptMessageRole.ASSISTANT:
-            return AssistantPromptMessage(content=[TextPromptMessageContent(data=text)])
+            return AssistantPromptMessage(content=contents)
         case PromptMessageRole.SYSTEM:
-            return SystemPromptMessage(content=[TextPromptMessageContent(data=text)])
+            return SystemPromptMessage(content=contents)
     raise NotImplementedError(f"Role {role} is not supported")
 
 
@@ -874,7 +878,9 @@ def _handle_list_messages(
                 jinjia2_variables=jinja2_variables,
                 variable_pool=variable_pool,
             )
-            prompt_message = _combine_text_message_with_role(text=result_text, role=message.role)
+            prompt_message = _combine_message_content_with_role(
+                contents=[TextPromptMessageContent(data=result_text)], role=message.role
+            )
             prompt_messages.append(prompt_message)
         else:
             # Get segment group from basic message
@@ -905,12 +911,14 @@ def _handle_list_messages(
             # Create message with text from all segments
             plain_text = segment_group.text
             if plain_text:
-                prompt_message = _combine_text_message_with_role(text=plain_text, role=message.role)
+                prompt_message = _combine_message_content_with_role(
+                    contents=[TextPromptMessageContent(data=plain_text)], role=message.role
+                )
                 prompt_messages.append(prompt_message)
 
             if file_contents:
                 # Create message with image contents
-                prompt_message = UserPromptMessage(content=file_contents)
+                prompt_message = _combine_message_content_with_role(contents=file_contents, role=message.role)
                 prompt_messages.append(prompt_message)
 
     return prompt_messages
@@ -1015,6 +1023,8 @@ def _handle_completion_template(
         else:
             template_text = template.text
         result_text = variable_pool.convert_template(template_text).text
-    prompt_message = _combine_text_message_with_role(text=result_text, role=PromptMessageRole.USER)
+    prompt_message = _combine_message_content_with_role(
+        contents=[TextPromptMessageContent(data=result_text)], role=PromptMessageRole.USER
+    )
     prompt_messages.append(prompt_message)
     return prompt_messages

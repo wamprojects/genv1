@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class NodeType(str, Enum):
+class NodeType(StrEnum):
     START = "start"
     END = "end"
     ANSWER = "answer"
@@ -24,9 +24,14 @@ class NodeType(str, Enum):
     LIST_OPERATOR = "list-operator"
 
 
-class ErrorStrategy(str, Enum):
+class ErrorStrategy(StrEnum):
     FAIL_BRANCH = "fail-branch"
     DEFAULT_VALUE = "default-value"
+
+
+class FailBranchSourceHandle(StrEnum):
+    FAILED = "fail-branch"
+    SUCCESS = "success-branch"
 
 
 CONTINUE_ON_ERROR_NODE_TYPE = [NodeType.LLM, NodeType.CODE, NodeType.TOOL, NodeType.HTTP_REQUEST]

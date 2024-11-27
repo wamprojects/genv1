@@ -74,7 +74,6 @@ from .exc import (
     MemoryRolePrefixRequiredError,
     ModelNotExistError,
     NoPromptFoundError,
-    NotSupportedPromptTypeError,
     TemplateTypeNotSupportError,
     VariableNotFoundError,
 )
